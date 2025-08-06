@@ -41,16 +41,29 @@ jobs:
         chmod 600 ec2_key.pem
         
         # Debug: List files before packaging
+        echo "Files in current directory:"
         ls -la
         
         # Create deployment package with explicit file paths
+        echo "Creating deployment package..."
         tar -czf rabbitmq-testing.tar.gz tasks.py run_task.py requirements.txt deploy.sh
         
         # Verify package was created
+        echo "Verifying package creation:"
         ls -la rabbitmq-testing.tar.gz
+        tar -tzf rabbitmq-testing.tar.gz
         
-        # Copy files to EC2
-        scp -i ec2_key.pem -o StrictHostKeyChecking=no rabbitmq-testing.tar.gz $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+        # Test SSH connection first
+        echo "Testing SSH connection..."
+        ssh -i ec2_key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=30 $EC2_USER@$EC2_HOST "echo 'SSH connection successful'"
+        
+        # Copy files to EC2 with verbose output
+        echo "Copying files to EC2..."
+        scp -v -i ec2_key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=30 rabbitmq-testing.tar.gz $EC2_USER@$EC2_HOST:~/
+        
+        # Verify file was copied
+        echo "Verifying file was copied to EC2..."
+        ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "ls -la ~/rabbitmq-testing.tar.gz"
         
         # Execute deployment script on EC2
         ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
@@ -58,14 +71,17 @@ jobs:
           echo "Starting deployment on EC2..."
           
           # Extract new code
-          cd /home/$EC2_USER
+          cd ~
           
           # Check if tar file exists
           if [ ! -f rabbitmq-testing.tar.gz ]; then
-            echo "Error: rabbitmq-testing.tar.gz not found"
+            echo "Error: rabbitmq-testing.tar.gz not found in home directory"
+            echo "Files in current directory:"
+            ls -la
             exit 1
           fi
           
+          echo "Found rabbitmq-testing.tar.gz, extracting files..."
           # Extract files
           tar -xzf rabbitmq-testing.tar.gz
           ls -la
@@ -73,6 +89,8 @@ jobs:
           # Check if deploy.sh exists
           if [ ! -f deploy.sh ]; then
             echo "Error: deploy.sh not found after extraction"
+            echo "Files after extraction:"
+            ls -la
             exit 1
           fi
           
