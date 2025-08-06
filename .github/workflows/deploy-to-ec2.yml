@@ -1,9 +1,7 @@
-name: Deploy RabbitMQ Testing to EC2
+name: Deploy to EC2
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
@@ -15,21 +13,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Run tests (if any)
-      run: |
-        # Add your test commands here
-        python -c "import celery; print('Celery import successful')"
-
     - name: Deploy to EC2
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -40,94 +23,25 @@ jobs:
         echo "$EC2_KEY" > ec2_key.pem
         chmod 600 ec2_key.pem
         
-        # Debug: List files before packaging
-        echo "Files in current directory:"
-        ls -la
+        # Copy Python files to EC2
+        scp -i ec2_key.pem -o StrictHostKeyChecking=no tasks.py run_task.py requirements.txt $EC2_USER@$EC2_HOST:/opt/rabbitmq-testing/
         
-        # Create deployment package with explicit file paths
-        echo "Creating deployment package..."
-        tar -czf rabbitmq-testing.tar.gz tasks.py run_task.py requirements.txt deploy.sh
-        
-        # Verify package was created
-        echo "Verifying package creation:"
-        ls -la rabbitmq-testing.tar.gz
-        tar -tzf rabbitmq-testing.tar.gz
-        
-        # Test SSH connection first
-        echo "Testing SSH connection..."
-        ssh -i ec2_key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=30 $EC2_USER@$EC2_HOST "echo 'SSH connection successful'"
-        
-        # Copy files to EC2 with verbose output
-        echo "Copying files to EC2..."
-        scp -v -i ec2_key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=30 rabbitmq-testing.tar.gz $EC2_USER@$EC2_HOST:~/
-        
-        # Verify file was copied
-        echo "Verifying file was copied to EC2..."
-        ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "ls -la ~/rabbitmq-testing.tar.gz"
-        
-        # Execute deployment script on EC2
+        # Restart services on EC2
         ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
-          set -e
-          echo "Starting deployment on EC2..."
+          cd /opt/rabbitmq-testing
           
-          # Extract new code
-          cd ~
+          # Update Python dependencies
+          source venv/bin/activate
+          pip install -r requirements.txt
           
-          # Check if tar file exists
-          if [ ! -f rabbitmq-testing.tar.gz ]; then
-            echo "Error: rabbitmq-testing.tar.gz not found in home directory"
-            echo "Files in current directory:"
-            ls -la
-            exit 1
-          fi
+          # Restart Celery worker
+          sudo systemctl restart celery-worker
           
-          echo "Found rabbitmq-testing.tar.gz, extracting files..."
-          # Extract files
-          tar -xzf rabbitmq-testing.tar.gz
-          ls -la
+          # Check status
+          echo "Celery worker status: $(sudo systemctl is-active celery-worker)"
           
-          # Check if deploy.sh exists
-          if [ ! -f deploy.sh ]; then
-            echo "Error: deploy.sh not found after extraction"
-            echo "Files after extraction:"
-            ls -la
-            exit 1
-          fi
-          
-          # Make deployment script executable and run it
-          chmod +x deploy.sh
-          ./deploy.sh
-          
-          echo "Deployment script completed successfully"
-        EOF
-        
-        # Post-deployment verification
-        echo "Running post-deployment verification..."
-        ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
-          echo "=== Post-Deployment Verification ==="
-          
-          # Check if application directory exists
-          if [ -d "/opt/rabbitmq-testing" ]; then
-            echo "✓ Application directory exists"
-            cd /opt/rabbitmq-testing
-            
-            # Check if virtual environment exists and test Python import
-            if [ -f "venv/bin/activate" ]; then
-              echo "✓ Virtual environment exists"
-              source venv/bin/activate
-              python3 -c "from tasks import add; print('✓ Tasks module import successful')" || echo "⚠ Tasks module import failed"
-            else
-              echo "⚠ Virtual environment not found"
-            fi
-          else
-            echo "⚠ Application directory not found"
-          fi
-          
-          # Check services
-          echo "RabbitMQ service: $(sudo systemctl is-active rabbitmq-server 2>/dev/null || echo 'inactive')"
-          echo "Celery worker service: $(sudo systemctl is-active celery-worker 2>/dev/null || echo 'inactive')"
-          
-          echo "=== Verification Complete ==="
+          # Test the deployment
+          python3 -c "from tasks import add; print('✓ Deployment successful')"
         EOF
         
         # Clean up
