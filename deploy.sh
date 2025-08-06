@@ -34,25 +34,67 @@ if [ -f /etc/os-release ]; then
         # Install RabbitMQ if not already installed
         if ! command -v rabbitmq-server &> /dev/null; then
             echo "Installing RabbitMQ on Amazon Linux..."
-            # Enable EPEL repository if needed
-            if [[ "$PKG_MANAGER" == "yum" ]]; then
-                sudo $PKG_MANAGER install -y epel-release
-            fi
             
             # Install Erlang (required for RabbitMQ)
-            sudo $PKG_MANAGER install -y erlang
-            
-            # Install RabbitMQ
+            echo "Installing Erlang..."
             if [[ "$PKG_MANAGER" == "dnf" ]]; then
                 # For Amazon Linux 2023
-                wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el9.noarch.rpm
-                sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el9.noarch.rpm
-                rm -f rabbitmq-server-3.12.10-1.el9.noarch.rpm
+                # Enable EPEL and install Erlang
+                sudo $PKG_MANAGER install -y epel-release
+                sudo $PKG_MANAGER install -y erlang || {
+                    echo "Erlang not found in repos, installing from RabbitMQ repository..."
+                    # Add RabbitMQ signing key
+                    sudo rpm --import 'https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc'
+                    # Add RabbitMQ repository
+                    sudo tee /etc/yum.repos.d/rabbitmq.repo <<EOF
+[rabbitmq-el9]
+name=rabbitmq-el9
+baseurl=https://yum1.rabbitmq.com/rabbitmq/el/9/noarch/
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
+EOF
+                    # Install Erlang from RabbitMQ repo
+                    sudo $PKG_MANAGER install -y erlang rabbitmq-server
+                }
             else
                 # For Amazon Linux 2
-                wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el8.noarch.rpm
-                sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el8.noarch.rpm
-                rm -f rabbitmq-server-3.12.10-1.el8.noarch.rpm
+                # Enable EPEL first
+                sudo $PKG_MANAGER install -y epel-release
+                sudo $PKG_MANAGER install -y erlang || {
+                    echo "Erlang not found in EPEL, installing from RabbitMQ repository..."
+                    # Add RabbitMQ signing key
+                    sudo rpm --import 'https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc'
+                    # Add RabbitMQ repository for EL8
+                    sudo tee /etc/yum.repos.d/rabbitmq.repo <<EOF
+[rabbitmq-el8]
+name=rabbitmq-el8
+baseurl=https://yum1.rabbitmq.com/rabbitmq/el/8/noarch/
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
+EOF
+                    # Install Erlang from RabbitMQ repo
+                    sudo $PKG_MANAGER install -y erlang rabbitmq-server
+                }
+            fi
+            
+            # If RabbitMQ wasn't installed from the repo above, install it manually
+            if ! command -v rabbitmq-server &> /dev/null; then
+                echo "Installing RabbitMQ manually..."
+                if [[ "$PKG_MANAGER" == "dnf" ]]; then
+                    # For Amazon Linux 2023
+                    wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el9.noarch.rpm
+                    sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el9.noarch.rpm
+                    rm -f rabbitmq-server-3.12.10-1.el9.noarch.rpm
+                else
+                    # For Amazon Linux 2
+                    wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el8.noarch.rpm
+                    sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el8.noarch.rpm
+                    rm -f rabbitmq-server-3.12.10-1.el8.noarch.rpm
+                fi
             fi
         fi
         
