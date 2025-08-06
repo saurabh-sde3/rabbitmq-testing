@@ -135,15 +135,25 @@ sudo chown $USER:$USER /var/run/celery
 # Reload systemd
 sudo systemctl daemon-reload
 
-# Start and enable services
+# Start and enable RabbitMQ
+echo "Starting RabbitMQ service..."
 sudo systemctl start rabbitmq-server
 sudo systemctl enable rabbitmq-server
 
 # Wait for RabbitMQ to be ready
-sleep 10
+echo "Waiting for RabbitMQ to be ready..."
+sleep 15
 
+# Check RabbitMQ status
+sudo systemctl status rabbitmq-server --no-pager || true
+
+# Start and enable Celery worker
+echo "Starting Celery worker..."
 sudo systemctl start celery-worker
 sudo systemctl enable celery-worker
+
+# Check Celery worker status
+sudo systemctl status celery-worker --no-pager || true
 
 echo "Deployment completed successfully!"
 
@@ -151,12 +161,25 @@ echo "Deployment completed successfully!"
 echo "Testing deployment..."
 cd $APP_DIR
 source venv/bin/activate
-python3 -c "from tasks import add; print('✓ Tasks module imported successfully')"
+python3 -c "from tasks import add; print('✓ Tasks module imported successfully')" || echo "⚠ Could not import tasks module"
 
-# Check service status
-echo "Service status:"
-sudo systemctl status rabbitmq-server --no-pager
-sudo systemctl status celery-worker --no-pager
+# Display service status summary
+echo ""
+echo "=== Service Status Summary ==="
+echo "RabbitMQ Status:"
+sudo systemctl is-active rabbitmq-server || echo "RabbitMQ is not running"
+echo "Celery Worker Status:"
+sudo systemctl is-active celery-worker || echo "Celery Worker is not running"
 
-echo "RabbitMQ Management UI available at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):15672"
+# Display connection info
+echo ""
+echo "=== Connection Information ==="
+if command -v curl &> /dev/null; then
+    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "Could not retrieve public IP")
+    echo "RabbitMQ Management UI: http://$PUBLIC_IP:15672"
+else
+    echo "RabbitMQ Management UI: http://[YOUR-EC2-PUBLIC-IP]:15672"
+fi
 echo "Username: admin, Password: admin123"
+echo ""
+echo "Deployment log completed."

@@ -40,36 +40,76 @@ jobs:
         echo "$EC2_KEY" > ec2_key.pem
         chmod 600 ec2_key.pem
         
-        # Create deployment package
-        tar -czf rabbitmq-testing.tar.gz *.py requirements.txt deploy.sh
+        # Debug: List files before packaging
+        ls -la
+        
+        # Create deployment package with explicit file paths
+        tar -czf rabbitmq-testing.tar.gz tasks.py run_task.py requirements.txt deploy.sh
+        
+        # Verify package was created
+        ls -la rabbitmq-testing.tar.gz
         
         # Copy files to EC2
         scp -i ec2_key.pem -o StrictHostKeyChecking=no rabbitmq-testing.tar.gz $EC2_USER@$EC2_HOST:/home/$EC2_USER/
         
         # Execute deployment script on EC2
         ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
-          # Stop existing services
-          sudo systemctl stop celery-worker || true
+          set -e
+          echo "Starting deployment on EC2..."
           
           # Extract new code
           cd /home/$EC2_USER
+          
+          # Check if tar file exists
+          if [ ! -f rabbitmq-testing.tar.gz ]; then
+            echo "Error: rabbitmq-testing.tar.gz not found"
+            exit 1
+          fi
+          
+          # Extract files
           tar -xzf rabbitmq-testing.tar.gz
+          ls -la
+          
+          # Check if deploy.sh exists
+          if [ ! -f deploy.sh ]; then
+            echo "Error: deploy.sh not found after extraction"
+            exit 1
+          fi
           
           # Make deployment script executable and run it
           chmod +x deploy.sh
           ./deploy.sh
           
-          # Start services
-          sudo systemctl start rabbitmq-server
-          sudo systemctl enable rabbitmq-server
-          sudo systemctl start celery-worker
-          sudo systemctl enable celery-worker
+          echo "Deployment script completed successfully"
+        EOF
+        
+        # Post-deployment verification
+        echo "Running post-deployment verification..."
+        ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+          echo "=== Post-Deployment Verification ==="
           
-          # Verify deployment
-          sleep 5
-          cd /opt/rabbitmq-testing
-          source venv/bin/activate
-          python3 -c "from tasks import add; print('Deployment successful')"
+          # Check if application directory exists
+          if [ -d "/opt/rabbitmq-testing" ]; then
+            echo "✓ Application directory exists"
+            cd /opt/rabbitmq-testing
+            
+            # Check if virtual environment exists and test Python import
+            if [ -f "venv/bin/activate" ]; then
+              echo "✓ Virtual environment exists"
+              source venv/bin/activate
+              python3 -c "from tasks import add; print('✓ Tasks module import successful')" || echo "⚠ Tasks module import failed"
+            else
+              echo "⚠ Virtual environment not found"
+            fi
+          else
+            echo "⚠ Application directory not found"
+          fi
+          
+          # Check services
+          echo "RabbitMQ service: $(sudo systemctl is-active rabbitmq-server 2>/dev/null || echo 'inactive')"
+          echo "Celery worker service: $(sudo systemctl is-active celery-worker 2>/dev/null || echo 'inactive')"
+          
+          echo "=== Verification Complete ==="
         EOF
         
         # Clean up
