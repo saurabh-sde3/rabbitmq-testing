@@ -6,8 +6,83 @@ set -e
 echo "Starting deployment..."
 
 # Detect OS and set package manager
-if [ -f /etc/redhat-release ]; then
-    # Amazon Linux / RHEL / CentOS
+echo "Detecting operating system..."
+
+# Check for Amazon Linux 2023 (newer format)
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    echo "OS detected: $NAME $VERSION"
+    
+    if [[ "$ID" == "amzn" ]] || [[ "$ID_LIKE" == *"rhel"* ]] || [[ "$ID_LIKE" == *"fedora"* ]]; then
+        # Amazon Linux / RHEL / CentOS / Fedora
+        echo "Using Amazon Linux/RHEL package manager..."
+        PKG_MANAGER="yum"
+        PYTHON_PKG="python3"
+        PIP_PKG="python3-pip"
+        
+        # For Amazon Linux 2023, use dnf instead of yum
+        if command -v dnf &> /dev/null; then
+            PKG_MANAGER="dnf"
+        fi
+        
+        # Update system packages
+        sudo $PKG_MANAGER update -y
+        
+        # Install Python 3 and pip if not already installed
+        sudo $PKG_MANAGER install -y $PYTHON_PKG $PIP_PKG python3-devel gcc
+        
+        # Install RabbitMQ if not already installed
+        if ! command -v rabbitmq-server &> /dev/null; then
+            echo "Installing RabbitMQ on Amazon Linux..."
+            # Enable EPEL repository if needed
+            if [[ "$PKG_MANAGER" == "yum" ]]; then
+                sudo $PKG_MANAGER install -y epel-release
+            fi
+            
+            # Install Erlang (required for RabbitMQ)
+            sudo $PKG_MANAGER install -y erlang
+            
+            # Install RabbitMQ
+            if [[ "$PKG_MANAGER" == "dnf" ]]; then
+                # For Amazon Linux 2023
+                wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el9.noarch.rpm
+                sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el9.noarch.rpm
+                rm -f rabbitmq-server-3.12.10-1.el9.noarch.rpm
+            else
+                # For Amazon Linux 2
+                wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el8.noarch.rpm
+                sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el8.noarch.rpm
+                rm -f rabbitmq-server-3.12.10-1.el8.noarch.rpm
+            fi
+        fi
+        
+    elif [[ "$ID" == "ubuntu" ]] || [[ "$ID" == "debian" ]] || [[ "$ID_LIKE" == *"debian"* ]]; then
+        # Ubuntu / Debian
+        echo "Using Ubuntu/Debian package manager..."
+        PKG_MANAGER="apt-get"
+        PYTHON_PKG="python3"
+        PIP_PKG="python3-pip"
+        
+        # Update system packages
+        sudo $PKG_MANAGER update -y
+        
+        # Install Python 3 and pip if not already installed
+        sudo $PKG_MANAGER install -y $PYTHON_PKG $PIP_PKG python3-venv python3-dev build-essential
+        
+        # Install RabbitMQ if not already installed
+        if ! command -v rabbitmq-server &> /dev/null; then
+            echo "Installing RabbitMQ on Ubuntu/Debian..."
+            sudo $PKG_MANAGER install -y rabbitmq-server
+        fi
+    else
+        echo "Unsupported operating system: $NAME"
+        echo "ID: $ID, ID_LIKE: $ID_LIKE"
+        exit 1
+    fi
+    
+elif [ -f /etc/redhat-release ]; then
+    # Fallback for older RHEL/CentOS systems
+    echo "Using legacy RHEL detection..."
     PKG_MANAGER="yum"
     PYTHON_PKG="python3"
     PIP_PKG="python3-pip"
@@ -20,21 +95,17 @@ if [ -f /etc/redhat-release ]; then
     
     # Install RabbitMQ if not already installed
     if ! command -v rabbitmq-server &> /dev/null; then
-        echo "Installing RabbitMQ on Amazon Linux..."
-        # Enable EPEL repository
+        echo "Installing RabbitMQ on RHEL/CentOS..."
         sudo $PKG_MANAGER install -y epel-release
-        
-        # Install Erlang (required for RabbitMQ)
         sudo $PKG_MANAGER install -y erlang
-        
-        # Install RabbitMQ
         wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el8.noarch.rpm
         sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el8.noarch.rpm
         rm -f rabbitmq-server-3.12.10-1.el8.noarch.rpm
     fi
     
 elif [ -f /etc/debian_version ]; then
-    # Ubuntu / Debian
+    # Fallback for older Debian/Ubuntu systems
+    echo "Using legacy Debian detection..."
     PKG_MANAGER="apt-get"
     PYTHON_PKG="python3"
     PIP_PKG="python3-pip"
@@ -51,7 +122,10 @@ elif [ -f /etc/debian_version ]; then
         sudo $PKG_MANAGER install -y rabbitmq-server
     fi
 else
-    echo "Unsupported operating system"
+    echo "Could not detect operating system"
+    echo "Available files in /etc/:"
+    ls -la /etc/ | grep -E "(release|version)"
+    echo "Please check your OS and update the deployment script accordingly."
     exit 1
 fi
 
