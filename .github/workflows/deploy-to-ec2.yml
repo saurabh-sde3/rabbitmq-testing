@@ -23,11 +23,15 @@ jobs:
         echo "$EC2_KEY" > ec2_key.pem
         chmod 600 ec2_key.pem
         
-        # Copy Python files to EC2
-        scp -i ec2_key.pem -o StrictHostKeyChecking=no tasks.py run_task.py requirements.txt $EC2_USER@$EC2_HOST:/opt/rabbitmq-testing/
+        # Copy Python files to EC2 home directory first
+        scp -i ec2_key.pem -o StrictHostKeyChecking=no tasks.py run_task.py requirements.txt $EC2_USER@$EC2_HOST:~/
         
-        # Restart services on EC2
+        # Move files and restart services on EC2
         ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+          # Move files to application directory
+          sudo cp ~/tasks.py ~/run_task.py ~/requirements.txt /opt/rabbitmq-testing/
+          sudo chown $USER:$USER /opt/rabbitmq-testing/*.py /opt/rabbitmq-testing/requirements.txt
+          
           cd /opt/rabbitmq-testing
           
           # Update Python dependencies
