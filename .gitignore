@@ -1,2 +1,35 @@
-__pycache__
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
 celery.log
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+
+# Deployment files
+*.pem
+*.tar.gz
+
+# AWS
+.aws/
+
+# Logs
+*.log
+
+# Local configuration
+config.local.py
