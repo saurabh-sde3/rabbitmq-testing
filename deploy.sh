@@ -5,25 +5,68 @@ set -e
 
 echo "Starting deployment..."
 
-# Update system packages
-sudo apt-get update -y
-
-# Install Python 3 and pip if not already installed
-sudo apt-get install -y python3 python3-pip python3-venv
-
-# Install RabbitMQ if not already installed
-if ! command -v rabbitmq-server &> /dev/null; then
-    echo "Installing RabbitMQ..."
-    sudo apt-get install -y rabbitmq-server
-    sudo systemctl enable rabbitmq-server
-    sudo systemctl start rabbitmq-server
+# Detect OS and set package manager
+if [ -f /etc/redhat-release ]; then
+    # Amazon Linux / RHEL / CentOS
+    PKG_MANAGER="yum"
+    PYTHON_PKG="python3"
+    PIP_PKG="python3-pip"
     
-    # Configure RabbitMQ
-    sudo rabbitmq-plugins enable rabbitmq_management
-    sudo rabbitmqctl add_user admin admin123
-    sudo rabbitmqctl set_user_tags admin administrator
-    sudo rabbitmqctl set_permissions -p / admin ".*" ".*" ".*"
+    # Update system packages
+    sudo $PKG_MANAGER update -y
+    
+    # Install Python 3 and pip if not already installed
+    sudo $PKG_MANAGER install -y $PYTHON_PKG $PIP_PKG python3-devel gcc
+    
+    # Install RabbitMQ if not already installed
+    if ! command -v rabbitmq-server &> /dev/null; then
+        echo "Installing RabbitMQ on Amazon Linux..."
+        # Enable EPEL repository
+        sudo $PKG_MANAGER install -y epel-release
+        
+        # Install Erlang (required for RabbitMQ)
+        sudo $PKG_MANAGER install -y erlang
+        
+        # Install RabbitMQ
+        wget https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.10/rabbitmq-server-3.12.10-1.el8.noarch.rpm
+        sudo $PKG_MANAGER install -y ./rabbitmq-server-3.12.10-1.el8.noarch.rpm
+        rm -f rabbitmq-server-3.12.10-1.el8.noarch.rpm
+    fi
+    
+elif [ -f /etc/debian_version ]; then
+    # Ubuntu / Debian
+    PKG_MANAGER="apt-get"
+    PYTHON_PKG="python3"
+    PIP_PKG="python3-pip"
+    
+    # Update system packages
+    sudo $PKG_MANAGER update -y
+    
+    # Install Python 3 and pip if not already installed
+    sudo $PKG_MANAGER install -y $PYTHON_PKG $PIP_PKG python3-venv python3-dev build-essential
+    
+    # Install RabbitMQ if not already installed
+    if ! command -v rabbitmq-server &> /dev/null; then
+        echo "Installing RabbitMQ on Ubuntu/Debian..."
+        sudo $PKG_MANAGER install -y rabbitmq-server
+    fi
+else
+    echo "Unsupported operating system"
+    exit 1
 fi
+
+# Configure RabbitMQ
+sudo systemctl enable rabbitmq-server
+sudo systemctl start rabbitmq-server
+
+# Wait for RabbitMQ to start
+sleep 10
+
+# Configure RabbitMQ management and users
+sudo rabbitmq-plugins enable rabbitmq_management
+sudo rabbitmqctl add_user admin admin123 || true
+sudo rabbitmqctl set_user_tags admin administrator
+sudo rabbitmqctl set_permissions -p / admin ".*" ".*" ".*"
 
 # Create application directory
 APP_DIR="/opt/rabbitmq-testing"
@@ -38,7 +81,7 @@ cp requirements.txt $APP_DIR/
 cd $APP_DIR
 
 # Create virtual environment
-python3 -m venv venv
+python3 -m venv venv || python3 -m pip install --user virtualenv && python3 -m virtualenv venv
 source venv/bin/activate
 
 # Install Python dependencies

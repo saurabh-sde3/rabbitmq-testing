@@ -30,13 +30,6 @@ jobs:
         # Add your test commands here
         python -c "import celery; print('Celery import successful')"
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-
     - name: Deploy to EC2
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -57,13 +50,12 @@ jobs:
         ssh -i ec2_key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
           # Stop existing services
           sudo systemctl stop celery-worker || true
-          sudo systemctl stop celery-beat || true
           
           # Extract new code
           cd /home/$EC2_USER
           tar -xzf rabbitmq-testing.tar.gz
           
-          # Run deployment script
+          # Make deployment script executable and run it
           chmod +x deploy.sh
           ./deploy.sh
           
@@ -75,6 +67,8 @@ jobs:
           
           # Verify deployment
           sleep 5
+          cd /opt/rabbitmq-testing
+          source venv/bin/activate
           python3 -c "from tasks import add; print('Deployment successful')"
         EOF
         

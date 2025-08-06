@@ -56,11 +56,8 @@ A simple Celery-based application for testing RabbitMQ functionality with automa
    - Port 5672 for RabbitMQ (if accessing externally)
 
 3. **GitHub Secrets**: Add the following secrets to your GitHub repository:
-   - `AWS_ACCESS_KEY_ID` - Your AWS access key
-   - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
-   - `AWS_REGION` - AWS region (e.g., us-east-1)
-   - `EC2_HOST` - Your EC2 instance public IP or hostname
-   - `EC2_USER` - EC2 username (usually 'ubuntu' for Ubuntu instances)
+   - `EC2_HOST` - Your EC2 instance public IP or hostname (e.g., ec2-13-221-42-101.compute-1.amazonaws.com)
+   - `EC2_USER` - EC2 username (e.g., 'ec2-user' for Amazon Linux, 'ubuntu' for Ubuntu)
    - `EC2_PRIVATE_KEY` - Your EC2 private key (.pem file content)
 
 ### Deployment Process
