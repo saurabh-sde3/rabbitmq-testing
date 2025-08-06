@@ -1,8 +1,5 @@
-from celery import Celery
+from tasks import add
 
-# Connecting to RabbitMQ running on the same machine (localhost)
-app = Celery('tasks', broker='amqp://guest:guest@localhost:5672//', backend='rpc://')
-
-@app.task
-def add(x, y):
-    return x + y
+result = add.delay(3, 7)
+print("Task sent. Waiting for result...")
+print("Result:", result.get(timeout=10))
